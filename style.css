@@ -19,13 +19,6 @@ box-shadow: 0 0 10px rgba(255,255,255,0.6);
  border: 2px solid /*rgba(82,127,161,0.8)*/ #fff ;
   color:white;
 } 
-label {
-    color: #ebdbb2;
-    font-size: 18px;
-	min-width: 800px;
-    min-height: 400px;
-    margin-top: 20px;
-}
 #main-container{
 
 
@@ -44,4 +37,13 @@ label {
 
 
 }
+#res{
 
+
+ background-color:rgba(0,0,0,0.0001) ;
+	font-size:20px;
+        font-family: "Roboto Mono Medium";
+        border-radius: 10px ;
+        color:white;
+	border-radius: 5px;
+}

@@ -42,9 +42,32 @@ void extractFiles(){
 	closedir(d);
 }
 
+//------------------search------------------------------------
+  static void search(GtkWidget *input,gpointer data){
+	const char *text = gtk_entry_get_text(GTK_ENTRY(input));
+	GList *children = gtk_container_get_children(GTK_CONTAINER(results_list));
+    for (GList *iter = children; iter != NULL; iter = g_list_next(iter)) {
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    }
+    g_list_free(children);
 
-static void on_input(GtkEntry *input,gpointer data){
-	const char *text = gtk_entry_get_text(input);
+
+
+    for (int i = 0; i < total_files; i++) {
+        char *filename = files[i];
+        
+        if (strlen(text) == 0 || strstr(filename, text) != NULL) {
+            
+            GtkWidget *row = gtk_label_new(filename);
+            gtk_widget_set_halign(row, GTK_ALIGN_START); // align left
+            gtk_widget_set_margin_start(row, 10);        // add padding
+            gtk_widget_set_margin_top(row, 5);
+            gtk_widget_set_margin_bottom(row, 5);
+
+            gtk_list_box_insert(GTK_LIST_BOX(results_list), row, -1);
+        }
+    }
+	gtk_widget_show_all(results_list);
 }
 //--------------------------quit------------------------------------------
 static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
@@ -60,7 +83,6 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
 static void activate (GtkApplication *app,gpointer user_data){
   GtkWidget *window;
   GtkWidget *input;
-  GtkWidget *label;
   GtkWidget *vbox;
 
 
@@ -89,11 +111,21 @@ gtk_container_add(GTK_CONTAINER(window), vbox);
 	//learn: user input
   input = gtk_entry_new();
   gtk_entry_set_placeholder_text(GTK_ENTRY(input), "looking for femboys kido?");	
-g_signal_connect(input, "activate", G_CALLBACK(on_input), window);
- label = gtk_label_new("Result");
+g_signal_connect(input, "activate", G_CALLBACK(search), window);
 gtk_box_pack_start(GTK_BOX(vbox), input, FALSE, TRUE, 5);
-gtk_box_pack_start(GTK_BOX(vbox), label, TRUE, TRUE, 5);
 //css  
+	GtkWidget *scrolled = gtk_scrolled_window_new(NULL, NULL);
+    gtk_box_pack_start(GTK_BOX(vbox), scrolled, TRUE, TRUE, 0);
+    
+    results_list = gtk_list_box_new();
+    gtk_container_add(GTK_CONTAINER(scrolled), results_list);
+	gtk_widget_set_name(scrolled, "scroll");
+	gtk_widget_set_name(results_list, "res");
+
+
+g_signal_connect(input, "changed", G_CALLBACK(search), NULL);
+	search(input, NULL);
+
 GtkCssProvider *provider = gtk_css_provider_new();
 GError *error = NULL;
     gtk_css_provider_load_from_path(provider,"style.css", &error);
