@@ -1,0 +1,47 @@
+/* style.css */
+window {
+    background-color: transparent; 
+	transition:linear;
+}
+
+entry:selected {
+      background-color: /*rgba(82,127,161,0.8)*/ #fff ;
+      margin-left:15px;
+     
+}
+
+entry{
+ background-color:rgba(0,0,0,0.5) ;
+ border-radius: 30px;
+margin-bottom:20px;
+margin-top:10px;
+box-shadow: 0 0 10px rgba(255,255,255,0.6);
+ border: 2px solid /*rgba(82,127,161,0.8)*/ #fff ;
+  color:white;
+} 
+label {
+    color: #ebdbb2;
+    font-size: 18px;
+	min-width: 800px;
+    min-height: 400px;
+    margin-top: 20px;
+}
+#main-container{
+
+
+    min-width: 600px;
+    min-height: 400px;
+
+    padding: 20px; 
+    
+	font-size:20px;
+        font-family: "Roboto Mono Medium";
+        
+        background-color: rgba(17,17,27, 0.5);
+        color:white;
+	border-radius: 5px;
+	border:2px solid /*rgba(82,127,161,0.8)*/ #fff
+
+
+}
+
