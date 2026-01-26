@@ -8,20 +8,77 @@
 #include <dirent.h>
 #include <sys/types.h>
 #define FILESLIM  1024
-#define FILENAMELIM  256
-char files[FILESLIM][FILENAMELIM];
+#define LINELIM  256
+typedef struct {
+    char name[LINELIM];     
+    char exec[LINELIM]; 
+    char icon[LINELIM]; 
+    char filename[LINELIM];
+    int is_terminal;
+}app;
 int total_files = 0;
+app apps[FILESLIM];
+
+
 GtkWidget *results_list;
+
+
+//---------------------name + icon + display fill -----------------------
+int  fillFiles(const char *path, app *app,const char *fname ){
+	FILE *fp = fopen(path, "r");
+    if (!fp) return 0 ;
+
+
+	char line[LINELIM];
+	strcpy(app->filename , fname);
+	app->name[0] = '\0';
+        app->exec[0] = '\0';
+        app->icon[0] = '\0';
+        app->is_terminal = 0;
+	while(fgets(line,sizeof(line),fp)){
+		line[strcspn(line, "\n")] = 0;
+ 	if(strncmp(line, "NoDisplay=true", 14)==0){
+		return 0;
+	}else if (strncmp(line,"Name=",5)==0 && app->name[0] =='\0'){
+			strncpy(app->name, line +5,LINELIM-1);
+			if (app->name[0] =='\0'){return 0;}
+	 }else if (strncmp(line,"Exec=",5)==0 && app->exec[0] =='\0'){
+			char *cmd = line + 5;
+            
+            // CLEANUP: Remove field codes like %u, %F, %U
+            // We look for the " %" pattern and cut the string there
+            char *args = strstr(cmd, " %");
+            if (args) *args = '\0'; 
+            
+            strncpy(app->exec, cmd, LINELIM - 1);
+			
+			if (app->exec[0] =='\0'){return 0;}
+	 }else if (strncmp(line,"Terminal=true",13)==0){
+			app->is_terminal=1;
+			
+	 }else if (strncmp(line,"Icon=",5)==0 && app->icon[0] =='\0'){
+			strncpy(app->icon, line +5,LINELIM-1);
+			
+	 }
+}
+
+return 1;
+	}
+
+
+
 //--------------------------------extractFiles----------------------------
 void extractFiles(){
-	const char *path = "/usr/share/applications/" ;
-	DIR* d = opendir(path);
+	 char dirpath[LINELIM] = "/usr/share/applications/" ;
+	char path[LINELIM];
+	DIR* d = opendir(dirpath);
 	struct dirent *dir;
 	if(d==NULL){
-		    fprintf(stderr, "Error opening dir: %s\n",path);
+		    fprintf(stderr, "Error opening dir: %s\n",dirpath);
 		return;
 	}
 
+	int index = 0;
 	while ((dir = readdir(d)) != NULL) {
 
 		if (total_files >= FILESLIM) {
@@ -31,19 +88,25 @@ void extractFiles(){
 		if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0 || strcasestr(dir->d_name ,".desktop") == NULL) {
             continue;
         }
-		
 
-		if(strcmp(strcasestr(dir->d_name ,".desktop" ),".desktop")==0) {
-			strcpy(files[total_files],dir->d_name);
-			files[total_files][FILENAMELIM - 1] = '\0';
-		total_files++;
+		strcpy(path, dirpath);
+		strcat(path, dir->d_name);
+		if(fillFiles(path, &apps[index], dir->d_name) == 1 ){
+
+		index++;
 		}
 
+
 	}
+	total_files= index;
 	closedir(d);
 }
 
-//------------------search------------------------------------
+
+
+
+
+//------------------search-----------------------------------------------
   static void search(GtkWidget *input,gpointer data){
 	const char *text = gtk_entry_get_text(GTK_ENTRY(input));
 	GList *children = gtk_container_get_children(GTK_CONTAINER(results_list));
@@ -55,11 +118,11 @@ void extractFiles(){
 
 
     for (int i = 0; i < total_files; i++) {
-        char *filename = files[i];
+        char *name = apps[i].name;
         
-        if (strlen(text) == 0 || strcasestr(filename, text) != NULL) {
+        if (strlen(text) == 0 || strcasestr(name, text) != NULL) {
             
-            GtkWidget *row = gtk_label_new(filename);
+            GtkWidget *row = gtk_label_new(name);
             gtk_widget_set_halign(row, GTK_ALIGN_START); // align left
             gtk_widget_set_margin_start(row, 10);        // add padding
             gtk_widget_set_margin_top(row, 5);
