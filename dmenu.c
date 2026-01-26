@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "glib.h"
 #include <gtk/gtk.h>
 #include <gtk-layer-shell/gtk-layer-shell.h>
@@ -27,12 +28,12 @@ void extractFiles(){
             fprintf(stderr, "Warning: Too many files! Limit reached.\n");
             break; 
         }
-		if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0 || strstr(dir->d_name ,".desktop") == NULL) {
+		if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0 || strcasestr(dir->d_name ,".desktop") == NULL) {
             continue;
         }
 		
 
-		if(strcmp(strstr(dir->d_name ,".desktop" ),".desktop")==0) {
+		if(strcmp(strcasestr(dir->d_name ,".desktop" ),".desktop")==0) {
 			strcpy(files[total_files],dir->d_name);
 			files[total_files][FILENAMELIM - 1] = '\0';
 		total_files++;
@@ -56,7 +57,7 @@ void extractFiles(){
     for (int i = 0; i < total_files; i++) {
         char *filename = files[i];
         
-        if (strlen(text) == 0 || strstr(filename, text) != NULL) {
+        if (strlen(text) == 0 || strcasestr(filename, text) != NULL) {
             
             GtkWidget *row = gtk_label_new(filename);
             gtk_widget_set_halign(row, GTK_ALIGN_START); // align left
