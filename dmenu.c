@@ -7,8 +7,13 @@
 #include <string.h>
 #include <dirent.h>
 #include <sys/types.h>
+
+#ifndef CSS_INSTALL_PATH
+#define CSS_INSTALL_PATH "style.css"
+#endif
+
 #define FILESLIM  1024
-#define LINELIM  256
+#define LINELIM  512
 typedef struct {
     char name[LINELIM];     
     char exec[LINELIM]; 
@@ -21,13 +26,50 @@ app apps[FILESLIM];
 
 
 GtkWidget *results_list;
+//----------------------------func def-------------------------------------------------
+  static void search(GtkWidget *input,gpointer data);
+int  fillFiles(const char *path, app *app,const char *fname );
+static void extractFiles();
+static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data);
+static void launch(app *app);
+const char* get_terminal();
+//--------------------------------extractFiles----------------------------
+static void extractFiles(){
+	 char dirpath[LINELIM] = "/usr/share/applications/" ;
+	char path[LINELIM];
+	DIR* d = opendir(dirpath);
+	struct dirent *dir;
+	if(d==NULL){
+		    fprintf(stderr, "Error opening dir: %s\n",dirpath);
+		return;
+	}
+	int index = 0;
+	while ((dir = readdir(d)) != NULL) {
+
+		if (total_files >= FILESLIM) {
+            fprintf(stderr, "Warning: Too many files! Limit reached.\n");
+            break; 
+        }
+		if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0 || strcasestr(dir->d_name ,".desktop") == NULL) {
+            continue;
+        }
+		strcpy(path, dirpath);
+		strcat(path, dir->d_name);
+		if(fillFiles(path, &apps[index], dir->d_name) == 1 ){
+		index++;
+		}
+	}
+	total_files= index;
+	closedir(d);
+}
+
+
 
 
 //---------------------name + icon + display fill -----------------------
 int  fillFiles(const char *path, app *app,const char *fname ){
 	FILE *fp = fopen(path, "r");
     if (!fp) return 0 ;
-
 
 	char line[LINELIM];
 	strcpy(app->filename , fname);
@@ -67,45 +109,6 @@ return 1;
 
 
 
-//--------------------------------extractFiles----------------------------
-void extractFiles(){
-	 char dirpath[LINELIM] = "/usr/share/applications/" ;
-	char path[LINELIM];
-	DIR* d = opendir(dirpath);
-	struct dirent *dir;
-	if(d==NULL){
-		    fprintf(stderr, "Error opening dir: %s\n",dirpath);
-		return;
-	}
-
-	int index = 0;
-	while ((dir = readdir(d)) != NULL) {
-
-		if (total_files >= FILESLIM) {
-            fprintf(stderr, "Warning: Too many files! Limit reached.\n");
-            break; 
-        }
-		if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0 || strcasestr(dir->d_name ,".desktop") == NULL) {
-            continue;
-        }
-
-		strcpy(path, dirpath);
-		strcat(path, dir->d_name);
-		if(fillFiles(path, &apps[index], dir->d_name) == 1 ){
-
-		index++;
-		}
-
-
-	}
-	total_files= index;
-	closedir(d);
-}
-
-
-
-
-
 //------------------search-----------------------------------------------
   static void search(GtkWidget *input,gpointer data){
 	const char *text = gtk_entry_get_text(GTK_ENTRY(input));
@@ -128,11 +131,74 @@ void extractFiles(){
             gtk_widget_set_margin_top(row, 5);
             gtk_widget_set_margin_bottom(row, 5);
 
+            g_object_set_data(G_OBJECT(row), "app_ptr", &apps[i]);
             gtk_list_box_insert(GTK_LIST_BOX(results_list), row, -1);
         }
     }
 	gtk_widget_show_all(results_list);
 }
+//--------------------selected app for launch-------------------------------
+void on_row_activated(GtkListBox *box, GtkListBoxRow *row, gpointer user_data) {
+    
+    GtkWidget *label = gtk_bin_get_child(GTK_BIN(row));
+
+    app *data = (app *)g_object_get_data(G_OBJECT(label), "app_ptr");
+
+    if (data != NULL) {
+        launch(data);
+    }
+}
+void on_entry_activate(GtkEntry *entry, gpointer user_data) {
+    GtkListBoxRow *row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(results_list), 0);
+    
+    if (row) {
+        on_row_activated(GTK_LIST_BOX(results_list), row, NULL);
+    }
+}
+
+//----------------------------------launch-------------------------------
+static void launch(app *app){
+GError *error = NULL;
+    char command[LINELIM*2];
+
+    if (app->is_terminal) {
+		const char * terminal = get_terminal();
+        snprintf(command, sizeof(command), "%s -e %s",terminal ,app->exec);
+    } else {
+        snprintf(command, sizeof(command), "%s", app->exec);
+    }
+
+    printf("Launching: %s\n", command); 
+    if (!g_spawn_command_line_async(command, &error)) {
+        fprintf(stderr, "Failed to launch: %s\n", error->message);
+        g_error_free(error);
+
+    } 
+        GApplication *application = g_application_get_default();
+        g_application_quit(application);
+}
+//-----------------get terminal (just a helper for launch)----------------
+const char* get_terminal() {
+    const char *terminals[] = {
+        "kitty",
+        "alacritty",
+        "gnome-terminal",
+        "konsole",
+        NULL     };
+
+    for (int i = 0; terminals[i] != NULL; i++) {
+        // GLib helper: Returns full path if found, NULL if not
+        char *path = g_find_program_in_path(terminals[i]);
+        
+        if (path != NULL) {
+            g_free(path);  
+	    return terminals[i];
+        }
+    }
+ //fallback
+    return "xterm"; 
+}
+
 //--------------------------quit------------------------------------------
 static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
     // Check if the key pressed is Escape
@@ -185,14 +251,15 @@ gtk_box_pack_start(GTK_BOX(vbox), input, FALSE, TRUE, 5);
     gtk_container_add(GTK_CONTAINER(scrolled), results_list);
 	gtk_widget_set_name(scrolled, "scroll");
 	gtk_widget_set_name(results_list, "res");
+g_signal_connect(results_list, "row-activated", G_CALLBACK(on_row_activated), NULL);
 
-
+g_signal_connect(input, "activate", G_CALLBACK(on_entry_activate), NULL);
 g_signal_connect(input, "changed", G_CALLBACK(search), NULL);
 	search(input, NULL);
 
 GtkCssProvider *provider = gtk_css_provider_new();
 GError *error = NULL;
-    gtk_css_provider_load_from_path(provider,"style.css", &error);
+    gtk_css_provider_load_from_path(provider,CSS_INSTALL_PATH, &error);
 	if (error) {
         g_warning("Failed to load CSS: %s", error->message);
         g_clear_error(&error);

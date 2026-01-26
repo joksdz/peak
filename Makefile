@@ -1,20 +1,19 @@
-# The name of your app
-TARGET = peak
+PREFIX = /usr/local
+SHARE_DIR = $(PREFIX)/share/peak
 
-# The compiler
-CC = gcc
+CFLAGS += -D CSS_INSTALL_PATH=\"$(SHARE_DIR)/style.css\"
 
-# Compiler flags: -Wall for warnings, and pkg-config to find GTK headers
-# # Update these lines in your Makefile
-CFLAGS = -Wall -g $(shell pkg-config --cflags gtk+-3.0 gtk-layer-shell-0)
-LDFLAGS = $(shell pkg-config --libs gtk+-3.0 gtk-layer-shell-0)
-# The source files
-SRC = dmenu.c
+all: peak
 
-# The build rule
-$(TARGET): $(SRC)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SRC) $(LDFLAGS)
+peak: dmenu.c
+	gcc $(CFLAGS) dmenu.c -o peak `pkg-config --cflags --libs gtk+-3.0 gtk-layer-shell-0`
 
-# Clean rule to remove the app
-clean:
-	rm -f $(TARGET)
+# The Install Step
+install: all
+	mkdir -p $(SHARE_DIR)
+	cp style.css $(SHARE_DIR)/
+	cp peak $(PREFIX)/bin/
+
+uninstall:
+	rm -rf $(SHARE_DIR)
+	rm $(PREFIX)/bin/peak
