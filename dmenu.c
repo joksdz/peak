@@ -30,15 +30,14 @@ GtkWidget *results_list;
   static void search(GtkWidget *input,gpointer data);
 int  fillFiles(const char *path, app *app,const char *fname );
 static void extractFiles(const char * folder);
-static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data);
 static void launch(app *app);
 const char* get_terminal();
-void scanInit();
+void extractInit();
 
 
 
-
-void scanInit() {
+//------------------------------------init extraction---------------------
+void extractInit() {
     total_files = 0;
     extractFiles("/usr/share/applications");
 
@@ -87,7 +86,6 @@ static void extractFiles(const char *folder){
 			extractFiles(path);
 		}
 		else if (type == DT_REG && strcasestr(dir->d_name ,".desktop") != NULL){
-				printf("%s\n",dir->d_name);
                     if(fillFiles(path, &apps[total_files], dir->d_name) == 1 ){
 		total_files++;
 		}
@@ -162,6 +160,14 @@ return 1;
             gtk_list_box_insert(GTK_LIST_BOX(results_list), row, -1);
         }
     }
+	// After the loop finishes adding items...
+if (index > 0) {
+    // Automatically highlight the first result
+    GtkListBoxRow *first_row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(results_list), 0);
+    if (first_row) {
+        gtk_list_box_select_row(GTK_LIST_BOX(results_list), first_row);
+    }
+}
 	gtk_widget_show_all(results_list);
 }
 
@@ -177,7 +183,7 @@ void on_row_activated(GtkListBox *box, GtkListBoxRow *row, gpointer user_data) {
     }
 }
 void on_entry_activate(GtkEntry *entry, gpointer user_data) {
-    GtkListBoxRow *row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(results_list), 0);
+    GtkListBoxRow *row = gtk_list_box_get_selected_row(GTK_LIST_BOX(results_list));
     
     if (row) {
         on_row_activated(GTK_LIST_BOX(results_list), row, NULL);
@@ -227,16 +233,68 @@ const char* get_terminal() {
     return "xterm"; 
 }
 
-//--------------------------quit------------------------------------------
-static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
-    // Check if the key pressed is Escape
-    if (event->keyval == GDK_KEY_Escape) {
-        // Quit the application attached to this window
-        GApplication *app = g_application_get_default();
-        g_application_quit(app);
+static void scroll_to_selected(GtkListBox *box, GtkListBoxRow *row, gpointer user_data) {
+    if (!row) return;
+
+    GtkScrolledWindow *scrolled = GTK_SCROLLED_WINDOW(user_data);
+    GtkAdjustment *adj = gtk_scrolled_window_get_vadjustment(scrolled);
+
+    GtkAllocation alloc;
+    gtk_widget_get_allocation(GTK_WIDGET(row), &alloc);
+    
+    int row_y;
+    gtk_widget_translate_coordinates(GTK_WIDGET(row), GTK_WIDGET(box), 0, 0, NULL, &row_y);
+
+    double current_scroll = gtk_adjustment_get_value(adj);
+    double visible_height = gtk_adjustment_get_page_size(adj);
+    double row_height = alloc.height;
+
+    if (row_y < current_scroll) {
+        gtk_adjustment_set_value(adj, row_y);
+    }
+    else if (row_y + row_height > current_scroll + visible_height) {
+        gtk_adjustment_set_value(adj, row_y + row_height - visible_height);
+    }
+}
+
+// This handles the "Remote Control" of the list
+gboolean on_entry_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
+    GtkListBox *listbox = GTK_LIST_BOX(user_data);
+    
+    // Get the currently selected row
+    GtkListBoxRow *selected_row = gtk_list_box_get_selected_row(listbox);
+    int current_index = -1;
+    
+    if (selected_row != NULL) {
+        current_index = gtk_list_box_row_get_index(selected_row);
+    }
+
+    if (event->keyval == GDK_KEY_Down) {
+        GtkListBoxRow *next_row = gtk_list_box_get_row_at_index(listbox, current_index + 1);
+        
+        if (next_row != NULL) {
+            gtk_list_box_select_row(listbox, next_row);
+        }
+        return TRUE;     }
+    
+    if (event->keyval == GDK_KEY_Up) {
+        if (current_index > 0) {
+            GtkListBoxRow *prev_row = gtk_list_box_get_row_at_index(listbox, current_index - 1);
+            if (prev_row != NULL) {
+                gtk_list_box_select_row(listbox, prev_row);
+            }
+        }
         return TRUE;     }
 
-    return FALSE; }
+    // Handle ESCAPE (Optional Quality of Life)
+    if (event->keyval == GDK_KEY_Escape) {
+        GApplication *application = g_application_get_default();
+            g_application_quit(application);
+        return TRUE;
+    }
+
+    return FALSE; 
+}
 //----------------------------UI/window handeling-------------------------
 static void activate (GtkApplication *app,gpointer user_data){
   GtkWidget *window;
@@ -262,16 +320,16 @@ static void activate (GtkApplication *app,gpointer user_data){
   gtk_window_set_title (GTK_WINDOW (window), "peak");
   gtk_window_set_default_size (GTK_WINDOW (window), 1200, 1000);
 	
-			 scanInit();
+			 extractInit();
 
  //learn: this creates a virtical box with 0 spacing in between items 
   vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-	gtk_widget_set_name(vbox, "main-container");
+	gtk_widget_set_name(vbox, "box");
 gtk_container_add(GTK_CONTAINER(window), vbox);
 	//learn: user input
   input = gtk_entry_new();
   gtk_entry_set_placeholder_text(GTK_ENTRY(input), "looking for femboys kido?");	
-g_signal_connect(input, "activate", G_CALLBACK(search), window);
+g_signal_connect(input, "changed", G_CALLBACK(search), window);
 gtk_box_pack_start(GTK_BOX(vbox), input, FALSE, TRUE, 5);
 //css  
 	GtkWidget *scrolled = gtk_scrolled_window_new(NULL, NULL);
@@ -283,8 +341,9 @@ gtk_box_pack_start(GTK_BOX(vbox), input, FALSE, TRUE, 5);
 	gtk_widget_set_name(results_list, "res");
 g_signal_connect(results_list, "row-activated", G_CALLBACK(on_row_activated), NULL);
 
+g_signal_connect(input, "key-press-event", G_CALLBACK(on_entry_key_press), results_list);
+g_signal_connect(results_list, "row-selected", G_CALLBACK(scroll_to_selected), scrolled);
 g_signal_connect(input, "activate", G_CALLBACK(on_entry_activate), NULL);
-g_signal_connect(input, "changed", G_CALLBACK(search), NULL);
 	search(input, NULL);
 
 GtkCssProvider *provider = gtk_css_provider_new();
@@ -299,12 +358,12 @@ GError *error = NULL;
         GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 
 
-g_signal_connect(window, "key-press-event", G_CALLBACK(on_key_press), NULL);
-
 gtk_widget_show_all(window);
+	gtk_widget_grab_focus(input);
 	//learn: renders the whole thing (deleting it still works idk why )
   gtk_window_present (GTK_WINDOW (window));
 }
+
 //------------------------main--------------------------------
 int main (int    argc, char **argv){
   GtkApplication *app;
@@ -312,6 +371,7 @@ int main (int    argc, char **argv){
   char AppId[]= "org.Peak.peakMenu";
 
   app = gtk_application_new (AppId, G_APPLICATION_DEFAULT_FLAGS);
+
   g_signal_connect (app, "activate", G_CALLBACK (activate), NULL);
   status = g_application_run (G_APPLICATION (app), argc, argv);
   g_object_unref (app);
