@@ -1,12 +1,12 @@
 #define _GNU_SOURCE
-#include "glib.h"
+#include <sys/stat.h>
+#include <stdlib.h>
 #include <gtk/gtk.h>
 #include <gtk-layer-shell/gtk-layer-shell.h>
 #include <gdk/gdkkeysyms.h>
 #include <stdio.h>
 #include <string.h>
 #include <dirent.h>
-#include <sys/types.h>
 
 #ifndef CSS_INSTALL_PATH
 #define CSS_INSTALL_PATH "style.css"
@@ -29,42 +29,72 @@ GtkWidget *results_list;
 //----------------------------func def-------------------------------------------------
   static void search(GtkWidget *input,gpointer data);
 int  fillFiles(const char *path, app *app,const char *fname );
-static void extractFiles();
+static void extractFiles(const char * folder);
 static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data);
 static void launch(app *app);
 const char* get_terminal();
+void scanInit();
+
+
+
+
+void scanInit() {
+    total_files = 0;
+    extractFiles("/usr/share/applications");
+
+    char user_path[LINELIM];
+    const char *home = getenv("HOME");
+    if (home) {
+        snprintf(user_path, sizeof(user_path), "%s/.local/share/applications", home);
+        extractFiles(user_path);
+    }
+
+
+}
 //--------------------------------extractFiles----------------------------
-static void extractFiles(){
-	 char dirpath[LINELIM] = "/usr/share/applications/" ;
+static void extractFiles(const char *folder){
 	char path[LINELIM];
-	DIR* d = opendir(dirpath);
+	DIR* d = opendir(folder);
 	struct dirent *dir;
 	if(d==NULL){
-		    fprintf(stderr, "Error opening dir: %s\n",dirpath);
+		    fprintf(stderr, "Error opening dir: %s\n",folder);
 		return;
 	}
-	int index = 0;
 	while ((dir = readdir(d)) != NULL) {
+		unsigned char type= dir->d_type;
 
 		if (total_files >= FILESLIM) {
             fprintf(stderr, "Warning: Too many files! Limit reached.\n");
             break; 
         }
-		if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0 || strcasestr(dir->d_name ,".desktop") == NULL) {
+
+		if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0 ) {
             continue;
         }
-		strcpy(path, dirpath);
-		strcat(path, dir->d_name);
-		if(fillFiles(path, &apps[index], dir->d_name) == 1 ){
-		index++;
+
+			snprintf(path, sizeof(path), "%s/%s", folder, dir->d_name);
+// FALLBACK: If type is unknown, we must ask the OS explicitly using stat()
+    if (type == DT_UNKNOWN || type == DT_LNK) {
+        struct stat st;
+			
+        if (stat(path, &st) == 0) {
+            if (S_ISDIR(st.st_mode)) type = DT_DIR;
+            else if (S_ISREG(st.st_mode)) type = DT_REG;
+        }
+    }
+
+		if(type == DT_DIR){
+			extractFiles(path);
+		}
+		else if (type == DT_REG && strcasestr(dir->d_name ,".desktop") != NULL){
+				printf("%s\n",dir->d_name);
+                    if(fillFiles(path, &apps[total_files], dir->d_name) == 1 ){
+		total_files++;
 		}
 	}
-	total_files= index;
+	}
 	closedir(d);
 }
-
-
-
 
 //---------------------name + icon + display fill -----------------------
 int  fillFiles(const char *path, app *app,const char *fname ){
@@ -103,11 +133,8 @@ int  fillFiles(const char *path, app *app,const char *fname ){
 			
 	 }
 }
-
 return 1;
 	}
-
-
 
 //------------------search-----------------------------------------------
   static void search(GtkWidget *input,gpointer data){
@@ -137,6 +164,7 @@ return 1;
     }
 	gtk_widget_show_all(results_list);
 }
+
 //--------------------selected app for launch-------------------------------
 void on_row_activated(GtkListBox *box, GtkListBoxRow *row, gpointer user_data) {
     
@@ -233,8 +261,10 @@ static void activate (GtkApplication *app,gpointer user_data){
 
   gtk_window_set_title (GTK_WINDOW (window), "peak");
   gtk_window_set_default_size (GTK_WINDOW (window), 1200, 1000);
+	
+			 scanInit();
+
  //learn: this creates a virtical box with 0 spacing in between items 
-	extractFiles();
   vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 	gtk_widget_set_name(vbox, "main-container");
 gtk_container_add(GTK_CONTAINER(window), vbox);
