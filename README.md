@@ -7,7 +7,8 @@
 - **Icon Support:** Automatically loads and scales application icons from system themes or file paths.
 - **Keyboard Centric:** Fully navigable interface (Arrows to select, Enter to launch, Esc to quit).
 - **Wayland Native:** Built using `gtk-layer-shell` for seamless integration with compositors like Hyprland and Sway.
-- **Upcoming:** **Wallpaper Mode** — A dedicated feature to browse and set wallpapers directly from the interface and  **x11 support**
+- **Upcoming:** **Wallpaper Mode** — A dedicated feature to browse and set wallpapers directly from the interface and
+                **x11 support**
 
 ## Dependencies
 
