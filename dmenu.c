@@ -33,22 +33,16 @@ static void extractFiles(const char * folder);
 static void launch(app *app);
 const char* get_terminal();
 void extractInit();
-
-
-
 //------------------------------------init extraction---------------------
 void extractInit() {
     total_files = 0;
     extractFiles("/usr/share/applications");
-
     char user_path[LINELIM];
     const char *home = getenv("HOME");
     if (home) {
         snprintf(user_path, sizeof(user_path), "%s/.local/share/applications", home);
         extractFiles(user_path);
     }
-
-
 }
 //--------------------------------extractFiles----------------------------
 static void extractFiles(const char *folder){
@@ -66,11 +60,9 @@ static void extractFiles(const char *folder){
             fprintf(stderr, "Warning: Too many files! Limit reached.\n");
             break; 
         }
-
 		if (strcmp(dir->d_name, ".") == 0 || strcmp(dir->d_name, "..") == 0 ) {
             continue;
         }
-
 			snprintf(path, sizeof(path), "%s/%s", folder, dir->d_name);
 // FALLBACK: If type is unknown, we must ask the OS explicitly using stat()
     if (type == DT_UNKNOWN || type == DT_LNK) {
@@ -81,7 +73,6 @@ static void extractFiles(const char *folder){
             else if (S_ISREG(st.st_mode)) type = DT_REG;
         }
     }
-
 		if(type == DT_DIR){
 			extractFiles(path);
 		}
@@ -93,12 +84,10 @@ static void extractFiles(const char *folder){
 	}
 	closedir(d);
 }
-
-//---------------------name + icon + display fill -----------------------
+//---------------------fill-----------------------
 int  fillFiles(const char *path, app *app,const char *fname ){
 	FILE *fp = fopen(path, "r");
     if (!fp) return 0 ;
-
 	char line[LINELIM];
 	strcpy(app->filename , fname);
 	app->name[0] = '\0';
@@ -119,20 +108,17 @@ int  fillFiles(const char *path, app *app,const char *fname ){
             // We look for the " %" pattern and cut the string there
             char *args = strstr(cmd, " %");
             if (args) *args = '\0'; 
-            
             strncpy(app->exec, cmd, LINELIM - 1);
-			
 			if (app->exec[0] =='\0'){return 0;}
 	 }else if (strncmp(line,"Terminal=true",13)==0){
 			app->is_terminal=1;
-			
 	 }else if (strncmp(line,"Icon=",5)==0 && app->icon[0] =='\0'){
 			strncpy(app->icon, line +5,LINELIM-1);
-			
 	 }
 }
+	if(app->icon[0] == '\0')strcpy(app->icon , "application-x-executable");	
 return 1;
-	}
+}
 
 //------------------search-----------------------------------------------
   static void search(GtkWidget *input,gpointer data){
@@ -142,27 +128,54 @@ return 1;
         gtk_widget_destroy(GTK_WIDGET(iter->data));
     }
     g_list_free(children);
-
-
+int count = 0;
 
     for (int i = 0; i < total_files; i++) {
         char *name = apps[i].name;
         
         if (strlen(text) == 0 || strcasestr(name, text) != NULL) {
             
-            GtkWidget *row = gtk_label_new(name);
-            gtk_widget_set_halign(row, GTK_ALIGN_START); // align left
-            gtk_widget_set_margin_start(row, 10);        // add padding
-            gtk_widget_set_margin_top(row, 5);
-            gtk_widget_set_margin_bottom(row, 5);
-
+            GtkWidget *row = gtk_list_box_row_new();
             g_object_set_data(G_OBJECT(row), "app_ptr", &apps[i]);
+            
+            // Increased spacing from 2 to 10 for better visuals
+            GtkWidget *resbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+            gtk_container_add(GTK_CONTAINER(row), resbox);
+            
+            GtkWidget *icon;
+            int IconSize = 32;
+
+            if (apps[i].icon[0] == '/') {
+                GError *err = NULL;
+                GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file_at_scale(apps[i].icon, IconSize, IconSize, TRUE, &err);
+
+                if (pixbuf) {
+                    icon = gtk_image_new_from_pixbuf(pixbuf);
+                    g_object_unref(pixbuf); 
+                } else {
+                    icon = gtk_image_new_from_icon_name("image-missing", GTK_ICON_SIZE_MENU);
+                    gtk_image_set_pixel_size(GTK_IMAGE(icon), IconSize);
+                    g_clear_error(&err);
+                }
+            } else {
+                icon = gtk_image_new_from_icon_name(apps[i].icon, GTK_ICON_SIZE_MENU);
+                gtk_image_set_pixel_size(GTK_IMAGE(icon), IconSize);
+            }
+
+            GtkWidget *label = gtk_label_new(apps[i].name);
+            gtk_widget_set_halign(label, GTK_ALIGN_START); 
+            gtk_widget_set_valign(label, GTK_ALIGN_CENTER);
+
+            gtk_box_pack_start(GTK_BOX(resbox), icon, FALSE, FALSE, 0);
+            gtk_box_pack_start(GTK_BOX(resbox), label, FALSE, FALSE, 0);
+            
             gtk_list_box_insert(GTK_LIST_BOX(results_list), row, -1);
+            
+            count++;
         }
     }
-	// After the loop finishes adding items...
 if (index > 0) {
-    // Automatically highlight the first result
+    //  highlight 
     GtkListBoxRow *first_row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(results_list), 0);
     if (first_row) {
         gtk_list_box_select_row(GTK_LIST_BOX(results_list), first_row);
@@ -174,9 +187,8 @@ if (index > 0) {
 //--------------------selected app for launch-------------------------------
 void on_row_activated(GtkListBox *box, GtkListBoxRow *row, gpointer user_data) {
     
-    GtkWidget *label = gtk_bin_get_child(GTK_BIN(row));
 
-    app *data = (app *)g_object_get_data(G_OBJECT(label), "app_ptr");
+    app *data = (app *)g_object_get_data(G_OBJECT(row), "app_ptr");
 
     if (data != NULL) {
         launch(data);
@@ -232,7 +244,7 @@ const char* get_terminal() {
  //fallback
     return "xterm"; 
 }
-
+//-----------------------------scrollxselect--------------------------------------------
 static void scroll_to_selected(GtkListBox *box, GtkListBoxRow *row, gpointer user_data) {
     if (!row) return;
 
@@ -256,27 +268,22 @@ static void scroll_to_selected(GtkListBox *box, GtkListBoxRow *row, gpointer use
         gtk_adjustment_set_value(adj, row_y + row_height - visible_height);
     }
 }
-
-// This handles the "Remote Control" of the list
+//-------------------------------keyboard_lock------------------------------------------
 gboolean on_entry_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
     GtkListBox *listbox = GTK_LIST_BOX(user_data);
     
     // Get the currently selected row
     GtkListBoxRow *selected_row = gtk_list_box_get_selected_row(listbox);
     int current_index = -1;
-    
     if (selected_row != NULL) {
         current_index = gtk_list_box_row_get_index(selected_row);
     }
-
     if (event->keyval == GDK_KEY_Down) {
         GtkListBoxRow *next_row = gtk_list_box_get_row_at_index(listbox, current_index + 1);
-        
         if (next_row != NULL) {
             gtk_list_box_select_row(listbox, next_row);
         }
         return TRUE;     }
-    
     if (event->keyval == GDK_KEY_Up) {
         if (current_index > 0) {
             GtkListBoxRow *prev_row = gtk_list_box_get_row_at_index(listbox, current_index - 1);
@@ -285,14 +292,12 @@ gboolean on_entry_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user
             }
         }
         return TRUE;     }
-
     // Handle ESCAPE (Optional Quality of Life)
     if (event->keyval == GDK_KEY_Escape) {
         GApplication *application = g_application_get_default();
             g_application_quit(application);
         return TRUE;
     }
-
     return FALSE; 
 }
 //----------------------------UI/window handeling-------------------------
@@ -324,14 +329,14 @@ static void activate (GtkApplication *app,gpointer user_data){
 
  //learn: this creates a virtical box with 0 spacing in between items 
   vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-	gtk_widget_set_name(vbox, "box");
+	gtk_widget_set_name(vbox, "BigBox");
 gtk_container_add(GTK_CONTAINER(window), vbox);
 	//learn: user input
   input = gtk_entry_new();
   gtk_entry_set_placeholder_text(GTK_ENTRY(input), "looking for femboys kido?");	
-g_signal_connect(input, "changed", G_CALLBACK(search), window);
 gtk_box_pack_start(GTK_BOX(vbox), input, FALSE, TRUE, 5);
 //css  
+g_signal_connect(input, "changed", G_CALLBACK(search), window);
 	GtkWidget *scrolled = gtk_scrolled_window_new(NULL, NULL);
     gtk_box_pack_start(GTK_BOX(vbox), scrolled, TRUE, TRUE, 0);
     
@@ -356,26 +361,20 @@ GError *error = NULL;
     gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
         GTK_STYLE_PROVIDER(provider),
         GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-
-
 gtk_widget_show_all(window);
 	gtk_widget_grab_focus(input);
 	//learn: renders the whole thing (deleting it still works idk why )
   gtk_window_present (GTK_WINDOW (window));
 }
-
 //------------------------main--------------------------------
 int main (int    argc, char **argv){
   GtkApplication *app;
   int status;
   char AppId[]= "org.Peak.peakMenu";
-
   app = gtk_application_new (AppId, G_APPLICATION_DEFAULT_FLAGS);
-
   g_signal_connect (app, "activate", G_CALLBACK (activate), NULL);
   status = g_application_run (G_APPLICATION (app), argc, argv);
   g_object_unref (app);
-
   return status;
 }
 
