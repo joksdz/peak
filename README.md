@@ -1,6 +1,6 @@
 #TODO  
 - [x] extract names and icons and cache the decoded icons 
 - [x] make everything into a struct  
-- [ ] load icons
+- [x] load icons
 - [ ] wallpaper mode 
 
