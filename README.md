@@ -62,3 +62,6 @@ Peak's appearance is controlled by a CSS file. After installation, you can modif
 
 /usr/local/share/peak/style.css
 ```
+the default is nice tho : 
+<img width="1629" height="899" alt="image" src="https://github.com/user-attachments/assets/39e650ba-6546-4bc4-982b-1a122ea199cf" />
+
