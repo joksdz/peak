@@ -39,7 +39,7 @@ Peak comes with a Makefile that handles compilation and resource installation (C
    Clone the repository:
   ```Bash
 
-git clone [https://github.com/yourusername/peak.git](https://github.com/yourusername/peak.git)
+git clone [https://github.com/yourusername/peak.git](https://github.com/joksdz/peak.git)
 cd peak
   ```
 Build and Install: Use sudo to install the binary to /usr/local/bin and assets to /usr/local/share.
