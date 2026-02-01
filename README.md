@@ -54,7 +54,7 @@ If you wish to remove Peak from your system:
 
 sudo make uninstall
 ```
-Customization
+## Customization
 
 Peak's appearance is controlled by a CSS file. After installation, you can modify the styles (colors, fonts, borders) by editing:
 ```Bash
