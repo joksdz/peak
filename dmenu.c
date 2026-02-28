@@ -1,19 +1,23 @@
+#include <gtk-3.0/gtk/gtk.h>
 #define _GNU_SOURCE
 #include <sys/stat.h>
 #include <stdlib.h>
+#include <time.h>
 #include <gtk/gtk.h>
 #include <gtk-layer-shell/gtk-layer-shell.h>
 #include <gdk/gdkkeysyms.h>
 #include <stdio.h>
 #include <string.h>
 #include <dirent.h>
+#include <stdbool.h>
 
 #ifndef CSS_INSTALL_PATH
 #define CSS_INSTALL_PATH "style.css"
 #endif
-
 #define FILESLIM  1024
 #define LINELIM  512
+bool wallpaper_mode = 0;
+char wallpapers_path[LINELIM] = "";
 typedef struct {
     char name[LINELIM];     
     char exec[LINELIM]; 
@@ -23,8 +27,6 @@ typedef struct {
 }app;
 int total_files = 0;
 app apps[FILESLIM];
-
-
 GtkWidget *results_list;
 //----------------------------func def-------------------------------------------------
   static void search(GtkWidget *input,gpointer data);
@@ -32,16 +34,31 @@ int  fillFiles(const char *path, app *app,const char *fname );
 static void extractFiles(const char * folder);
 static void launch(app *app);
 const char* get_terminal();
+static void select_wall(GtkListBox *box, GtkListBoxRow *row, gpointer user_data);
+void on_row_activated(GtkListBox *box, GtkListBoxRow *row, gpointer user_data);
 void extractInit();
 //------------------------------------init extraction---------------------
+
 void extractInit() {
     total_files = 0;
-    extractFiles("/usr/share/applications");
+
     char user_path[LINELIM];
     const char *home = getenv("HOME");
-    if (home) {
-        snprintf(user_path, sizeof(user_path), "%s/.local/share/applications", home);
-        extractFiles(user_path);
+
+    if (wallpaper_mode == false) {
+        extractFiles("/usr/share/applications");
+        
+        if (home) {
+            snprintf(user_path, sizeof(user_path), "%s/.local/share/applications", home);
+            extractFiles(user_path);
+        }
+    } else {
+		if(wallpapers_path[0] != '\0'){
+
+            extractFiles(wallpapers_path);
+		}else{
+            fprintf(stderr, "wallpapers path was not specified .\n");
+        }
     }
 }
 //--------------------------------extractFiles----------------------------
@@ -64,7 +81,7 @@ static void extractFiles(const char *folder){
             continue;
         }
 			snprintf(path, sizeof(path), "%s/%s", folder, dir->d_name);
-// FALLBACK: If type is unknown, we must ask the OS explicitly using stat()
+// FALLBACK: If type is unknown, we must ask the os explicitly using stat()
     if (type == DT_UNKNOWN || type == DT_LNK) {
         struct stat st;
 			
@@ -76,14 +93,56 @@ static void extractFiles(const char *folder){
 		if(type == DT_DIR){
 			extractFiles(path);
 		}
-		else if (type == DT_REG && strcasestr(dir->d_name ,".desktop") != NULL){
+		else if(wallpaper_mode==false&&type == DT_REG && strcasestr(dir->d_name ,".desktop") != NULL){
                     if(fillFiles(path, &apps[total_files], dir->d_name) == 1 ){
 		total_files++;
-		}
-	}
-	}
+			}
+		}else if (wallpaper_mode == true && type == DT_REG && 
+                (strcasestr(dir->d_name, ".jpg") != NULL || 
+                 strcasestr(dir->d_name, ".jpeg") != NULL || 
+                 strcasestr(dir->d_name, ".jxl") != NULL || 
+                 strcasestr(dir->d_name, ".png") != NULL || 
+                 strcasestr(dir->d_name, ".gif") != NULL || 
+                 strcasestr(dir->d_name, ".pnm") != NULL || 
+                 strcasestr(dir->d_name, ".tga") != NULL || 
+                 strcasestr(dir->d_name, ".tiff") != NULL || 
+                 strcasestr(dir->d_name, ".tif") != NULL || 
+                 strcasestr(dir->d_name, ".webp") != NULL || 
+                 strcasestr(dir->d_name, ".bmp") != NULL || 
+                 strcasestr(dir->d_name, ".ff") != NULL ||  
+		 strcasestr(dir->d_name, ".svg") != NULL)) {
+               
+            strcpy(apps[total_files].name, dir->d_name);
+            strcpy(apps[total_files].exec, path);
+            strcpy(apps[total_files].icon, path);             
+            total_files++;
+        }
+            
+    }
 	closedir(d);
 }
+//----------------------------wall paper selection----------------------------------
+static void select_wall(GtkListBox *box, GtkListBoxRow *row, gpointer user_data) {
+    if (!wallpaper_mode || row == NULL) return;
+
+    GtkWidget *preview = GTK_WIDGET(user_data);
+    app *data = (app *)g_object_get_data(G_OBJECT(row), "app_ptr");
+
+    if (data != NULL && data->icon[0] != '\0') {
+        GError *err = NULL;
+        GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file_at_scale(data->icon, 600, -1, TRUE, &err);
+
+        if (pixbuf) {
+            gtk_image_set_from_pixbuf(GTK_IMAGE(preview), pixbuf);
+            g_object_unref(pixbuf);
+        } else {
+            printf("Failed to load image: %s\n", err->message); 
+            g_clear_error(&err);
+        }
+    }
+}
+
+
 //---------------------fill-----------------------
 int  fillFiles(const char *path, app *app,const char *fname ){
 	FILE *fp = fopen(path, "r");
@@ -104,7 +163,7 @@ int  fillFiles(const char *path, app *app,const char *fname ){
 	 }else if (strncmp(line,"Exec=",5)==0 && app->exec[0] =='\0'){
 			char *cmd = line + 5;
             
-            // CLEANUP: Remove field codes like %u, %F, %U
+            // cleanup: remove field codes like %u, %F, %U
             // We look for the " %" pattern and cut the string there
             char *args = strstr(cmd, " %");
             if (args) *args = '\0'; 
@@ -119,6 +178,7 @@ int  fillFiles(const char *path, app *app,const char *fname ){
 	if(app->icon[0] == '\0')strcpy(app->icon , "application-x-executable");	
 return 1;
 }
+
 
 //------------------search-----------------------------------------------
   static void search(GtkWidget *input,gpointer data){
@@ -138,13 +198,12 @@ int count = 0;
             GtkWidget *row = gtk_list_box_row_new();
             g_object_set_data(G_OBJECT(row), "app_ptr", &apps[i]);
             
-            // Increased spacing from 2 to 10 for better visuals
             GtkWidget *resbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
             gtk_container_add(GTK_CONTAINER(row), resbox);
-            
-            GtkWidget *icon;
+            GtkWidget *icon= NULL;
             int IconSize = 32;
-
+            
+if(wallpaper_mode == false){
             if (apps[i].icon[0] == '/') {
                 GError *err = NULL;
                 GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file_at_scale(apps[i].icon, IconSize, IconSize, TRUE, &err);
@@ -161,12 +220,12 @@ int count = 0;
                 icon = gtk_image_new_from_icon_name(apps[i].icon, GTK_ICON_SIZE_MENU);
                 gtk_image_set_pixel_size(GTK_IMAGE(icon), IconSize);
             }
+			}
 
             GtkWidget *label = gtk_label_new(apps[i].name);
             gtk_widget_set_halign(label, GTK_ALIGN_START); 
             gtk_widget_set_valign(label, GTK_ALIGN_CENTER);
-
-            gtk_box_pack_start(GTK_BOX(resbox), icon, FALSE, FALSE, 0);
+if(wallpaper_mode == false){gtk_box_pack_start(GTK_BOX(resbox), icon, FALSE, FALSE, 0);}
             gtk_box_pack_start(GTK_BOX(resbox), label, FALSE, FALSE, 0);
             
             gtk_list_box_insert(GTK_LIST_BOX(results_list), row, -1);
@@ -174,7 +233,7 @@ int count = 0;
             count++;
         }
     }
-if (index > 0) {
+if (count> 0) {
     //  highlight 
     GtkListBoxRow *first_row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(results_list), 0);
     if (first_row) {
@@ -183,7 +242,6 @@ if (index > 0) {
 }
 	gtk_widget_show_all(results_list);
 }
-
 //--------------------selected app for launch-------------------------------
 void on_row_activated(GtkListBox *box, GtkListBoxRow *row, gpointer user_data) {
     
@@ -206,7 +264,7 @@ void on_entry_activate(GtkEntry *entry, gpointer user_data) {
 static void launch(app *app){
 GError *error = NULL;
     char command[LINELIM*2];
-
+if(wallpaper_mode==false){
     if (app->is_terminal) {
 		const char * terminal = get_terminal();
         snprintf(command, sizeof(command), "%s -e %s",terminal ,app->exec);
@@ -219,7 +277,36 @@ GError *error = NULL;
         fprintf(stderr, "Failed to launch: %s\n", error->message);
         g_error_free(error);
 
-    } 
+    }
+	}else{
+const char *trans_types[] = {"wipe", "grow", "center", "outer", "left", "right"};
+        int num_types = 6;
+        
+        int rand_index = rand() % num_types;
+        const char *selected_trans = trans_types[rand_index];
+        
+        char command[LINELIM * 2]; 
+        // grow and outer require pos
+        if (strcmp(selected_trans, "grow") == 0 || strcmp(selected_trans, "outer") == 0) {
+            
+            double pos = (double)((rand() % 99) + 1) / 100.0;
+            
+            snprintf(command, sizeof(command), 
+                     "swww img \"%s\" --transition-type %s --transition-pos %.2f,%.2f", 
+                     app->exec, selected_trans, pos, pos);
+                     
+        } else {
+            snprintf(command, sizeof(command), 
+                     "swww img \"%s\" --transition-type %s", 
+                     app->exec, selected_trans);
+        }
+
+        printf("Executing: %s\n", command);
+        
+        g_spawn_command_line_async(command, NULL);
+        
+        
+}
         GApplication *application = g_application_get_default();
         g_application_quit(application);
 }
@@ -301,81 +388,129 @@ gboolean on_entry_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user
     return FALSE; 
 }
 //----------------------------UI/window handeling-------------------------
-static void activate (GtkApplication *app,gpointer user_data){
-  GtkWidget *window;
-  GtkWidget *input;
-  GtkWidget *vbox;
+static void activate(GtkApplication *app, gpointer user_data) {
+    GtkWidget *window;
+    GtkWidget *input;
+    GtkWidget *vbox;
+    GtkWidget *main_hbox;      
+	GtkWidget *preview = NULL; 
 
-
-  window = gtk_application_window_new (app);
-	              //learn:we use GTK_WINDOW(window) for casting window pointer to a GtkWindow 
-	//we need this to render the window as a layer on hyprland so it doesnt tille and instead floats and centers it self 
-	gtk_layer_init_for_window(GTK_WINDOW(window));
-
-	gtk_layer_set_layer(GTK_WINDOW(window), GTK_LAYER_SHELL_LAYER_OVERLAY);
-//anchor to nothing to center it 
+    window = gtk_application_window_new(app);
+    
+    // Layer shell setup
+    gtk_layer_init_for_window(GTK_WINDOW(window));
+    gtk_layer_set_layer(GTK_WINDOW(window), GTK_LAYER_SHELL_LAYER_OVERLAY);
     gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_TOP, FALSE);
     gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_BOTTOM, FALSE);
     gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_LEFT, FALSE);
     gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_RIGHT, FALSE);
-	//sets the keyboard focus on it (to stop this you need to make an exit button)
     gtk_layer_set_keyboard_mode(GTK_WINDOW(window), GTK_LAYER_SHELL_KEYBOARD_MODE_EXCLUSIVE);
 
+    gtk_window_set_title(GTK_WINDOW(window), "peak");
+    gtk_window_set_default_size(GTK_WINDOW(window), 1200, 1000); 
 
-  gtk_window_set_title (GTK_WINDOW (window), "peak");
-  gtk_window_set_default_size (GTK_WINDOW (window), 1200, 1000);
-	
-			 extractInit();
+    extractInit();
 
- //learn: this creates a virtical box with 0 spacing in between items 
-  vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-	gtk_widget_set_name(vbox, "BigBox");
-gtk_container_add(GTK_CONTAINER(window), vbox);
-	//learn: user input
-  input = gtk_entry_new();
-  gtk_entry_set_placeholder_text(GTK_ENTRY(input), "looking for femboys kido?");	
-gtk_box_pack_start(GTK_BOX(vbox), input, FALSE, TRUE, 5);
-//css  
-g_signal_connect(input, "changed", G_CALLBACK(search), window);
-	GtkWidget *scrolled = gtk_scrolled_window_new(NULL, NULL);
+    
+    main_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10); 
+	gtk_container_add(GTK_CONTAINER(window), main_hbox);
+
+    vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_name(vbox, "BigBox");
+    gtk_box_pack_start(GTK_BOX(main_hbox), vbox, TRUE, TRUE, 0); 
+
+
+    if (wallpaper_mode) {
+        preview = gtk_image_new();
+        gtk_widget_set_name(preview, "PreviewImage");
+        
+        gtk_widget_set_size_request(preview, 600, 400); 
+        
+        gtk_box_pack_start(GTK_BOX(main_hbox), preview, FALSE, FALSE, 20); 
+    }
+
+    input = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(input), "looking for femboys kido?");    
+    gtk_box_pack_start(GTK_BOX(vbox), input, FALSE, TRUE, 5);
+
+    g_signal_connect(input, "changed", G_CALLBACK(search), window);
+    
+    GtkWidget *scrolled = gtk_scrolled_window_new(NULL, NULL);
     gtk_box_pack_start(GTK_BOX(vbox), scrolled, TRUE, TRUE, 0);
     
     results_list = gtk_list_box_new();
     gtk_container_add(GTK_CONTAINER(scrolled), results_list);
-	gtk_widget_set_name(scrolled, "scroll");
-	gtk_widget_set_name(results_list, "res");
-g_signal_connect(results_list, "row-activated", G_CALLBACK(on_row_activated), NULL);
+    gtk_widget_set_name(scrolled, "scroll");
+    gtk_widget_set_name(results_list, "res");
 
-g_signal_connect(input, "key-press-event", G_CALLBACK(on_entry_key_press), results_list);
-g_signal_connect(results_list, "row-selected", G_CALLBACK(scroll_to_selected), scrolled);
-g_signal_connect(input, "activate", G_CALLBACK(on_entry_activate), NULL);
-	search(input, NULL);
+    g_signal_connect(results_list, "row-activated", G_CALLBACK(on_row_activated), NULL);
+    g_signal_connect(input, "key-press-event", G_CALLBACK(on_entry_key_press), results_list);
+    g_signal_connect(results_list, "row-selected", G_CALLBACK(scroll_to_selected), scrolled);
+    g_signal_connect(input, "activate", G_CALLBACK(on_entry_activate), NULL);
+    
+    if (wallpaper_mode) {
+        g_signal_connect(results_list, "row-selected", G_CALLBACK(select_wall), preview);
+    }
 
-GtkCssProvider *provider = gtk_css_provider_new();
-GError *error = NULL;
-    gtk_css_provider_load_from_path(provider,CSS_INSTALL_PATH, &error);
-	if (error) {
+    search(input, NULL);
+
+    // CSS setup
+    GtkCssProvider *provider = gtk_css_provider_new();
+    GError *error = NULL;
+    gtk_css_provider_load_from_path(provider, CSS_INSTALL_PATH, &error);
+    if (error) {
         g_warning("Failed to load CSS: %s", error->message);
         g_clear_error(&error);
     }
     gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
         GTK_STYLE_PROVIDER(provider),
         GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-gtk_widget_show_all(window);
-	gtk_widget_grab_focus(input);
-	//learn: renders the whole thing (deleting it still works idk why )
-  gtk_window_present (GTK_WINDOW (window));
+
+    gtk_widget_show_all(window);
+    gtk_widget_grab_focus(input);
+    gtk_window_present(GTK_WINDOW(window));
 }
 //------------------------main--------------------------------
 int main (int    argc, char **argv){
+	srand(time(NULL));
+	for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            printf("Usage: peak [OPTION]\n");
+            printf("A lightweight application launcher/wallpaper switcher\n\n");
+            printf("Options:\n");
+            printf("  --wallpaper=<path>   Start in wallpaper mode with optional path\n");
+            printf("  -w <path>            Same as --wallpaper\n");
+            printf("  -h, --help           Show this help message and exit\n");
+            return 0;
+            
+        } else if (strncmp(argv[i], "--wallpaper=", 12) == 0) {
+            wallpaper_mode = true;
+            strncpy(wallpapers_path, argv[i] + 12, LINELIM - 1);
+            printf("Starting wallpaper mode at: %s\n", wallpapers_path);
+            
+        } else if (strcmp(argv[i], "--wallpaper") == 0 || strcmp(argv[i], "-w") == 0) {
+            wallpaper_mode = true;
+            
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                strncpy(wallpapers_path, argv[i + 1], LINELIM - 1);
+                i++;                 printf("Starting wallpaper mode at: %s\n", wallpapers_path);
+            } else {
+                printf("Starting wallpaper mode (default path)\n");
+            }
+            
+        } else {
+            printf("Unknown option: %s\n", argv[i]);
+            printf("Try 'peak --help' for more information.\n");
+            return 1;
+        }
+    }
+	gtk_init(NULL, NULL);
   GtkApplication *app;
   int status;
   char AppId[]= "org.Peak.peakMenu";
   app = gtk_application_new (AppId, G_APPLICATION_DEFAULT_FLAGS);
   g_signal_connect (app, "activate", G_CALLBACK (activate), NULL);
-  status = g_application_run (G_APPLICATION (app), argc, argv);
+  status = g_application_run (G_APPLICATION (app), 0, NULL);
   g_object_unref (app);
   return status;
 }
-
-
